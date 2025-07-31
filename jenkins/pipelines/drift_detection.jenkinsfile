@@ -1,0 +1,248 @@
+#!/usr/bin/env groovy
+
+// Terraform Drift Detection Pipeline
+// Performs plan-only operations to detect infrastructure drift
+// Auto-apply disabled pending further testing
+
+pipeline {
+    agent any
+    
+    parameters {
+        choice(
+            name: 'ENV',
+            choices: ['uat', 'dev', 'prod'],
+            description: 'Environment to check for drift'
+        )
+        booleanParam(
+            name: 'DRIFT_CHECK_ONLY',
+            defaultValue: true,
+            description: 'Only check for drift, do not apply changes'
+        )
+    }
+    
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+        ansiColor('xterm')
+    }
+    
+    triggers {
+        // Secondary safety trigger if Lambda fails
+        cron('H */6 * * *')
+    }
+    
+    environment {
+        AWS_DEFAULT_REGION = 'eu-west-1'
+        TF_IN_AUTOMATION = 'true'
+        TF_INPUT = '0'
+    }
+    
+    stages {
+        stage('Setup') {
+            steps {
+                script {
+                    // Clean workspace
+                    deleteDir()
+                    
+                    // Checkout code
+                    checkout scm
+                    
+                    // Set build description
+                    currentBuild.description = "Drift Detection: ${params.ENV}"
+                    
+                    echo "🔍 Starting drift detection for environment: ${params.ENV}"
+                }
+            }
+        }
+        
+        stage('Assume Terraform Role') {
+            steps {
+                script {
+                    echo "🔐 Assuming Terraform role for ${params.ENV}"
+                    
+                    // Get AWS Account ID dynamically
+                    env.AWS_ACCOUNT_ID = sh(
+                        script: 'aws sts get-caller-identity --query Account --output text',
+                        returnStdout: true
+                    ).trim()
+                    
+                    // Assume the environment-specific Terraform role
+                    def roleArn = "arn:aws:iam::${env.AWS_ACCOUNT_ID}:role/optum-${params.ENV}-demo-terraform-role"
+                    
+                    def credentials = sh(
+                        script: """
+                            aws sts assume-role \\
+                                --role-arn "${roleArn}" \\
+                                --role-session-name "jenkins-drift-detection-${env.BUILD_NUMBER}" \\
+                                --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \\
+                                --output text
+                        """,
+                        returnStdout: true
+                    ).trim().split('\t')
+                    
+                    env.AWS_ACCESS_KEY_ID = credentials[0]
+                    env.AWS_SECRET_ACCESS_KEY = credentials[1]
+                    env.AWS_SESSION_TOKEN = credentials[2]
+                    
+                    echo "✅ Successfully assumed Terraform role"
+                }
+            }
+        }
+        
+        stage('Terraform Init') {
+            steps {
+                dir('terraform') {
+                    script {
+                        echo "🚀 Initializing Terraform for ${params.ENV}"
+                        
+                        sh """
+                            terraform init \\
+                                -backend-config="bucket=optum-${params.ENV}-demo-terraform-state" \\
+                                -backend-config="key=${params.ENV}/terraform.tfstate" \\
+                                -backend-config="region=${env.AWS_DEFAULT_REGION}" \\
+                                -backend-config="dynamodb_table=optum-${params.ENV}-demo-tf-locks" \\
+                                -backend-config="encrypt=true"
+                        """
+                        
+                        echo "✅ Terraform initialized successfully"
+                    }
+                }
+            }
+        }
+        
+        stage('Drift Detection') {
+            steps {
+                dir('terraform') {
+                    script {
+                        echo "🔍 Checking for infrastructure drift"
+                        
+                        // Set deployment configuration file
+                        def configFile = "environments/${params.ENV}/deployment.tfvars"
+                        
+                        // Run terraform plan with detailed exit code
+                        def planResult = sh(
+                            script: """
+                                set +e
+                                terraform plan \\
+                                    -var-file="${configFile}" \\
+                                    -detailed-exitcode \\
+                                    -out=drift-plan.out
+                                echo \$?
+                            """,
+                            returnStdout: true
+                        ).trim()
+                        
+                        def exitCode = planResult.split('\n')[-1] as Integer
+                        
+                        // Interpret exit codes
+                        switch(exitCode) {
+                            case 0:
+                                echo "✅ No drift detected - infrastructure matches configuration"
+                                currentBuild.description = "✅ No drift detected"
+                                currentBuild.result = 'SUCCESS'
+                                break
+                                
+                            case 1:
+                                echo "❌ Terraform plan failed - configuration errors detected"
+                                currentBuild.description = "❌ Plan failed"
+                                currentBuild.result = 'FAILURE'
+                                error("Terraform plan failed with errors")
+                                break
+                                
+                            case 2:
+                                echo "⚠️ DRIFT DETECTED - infrastructure changes required"
+                                currentBuild.description = "⚠️ Drift detected"
+                                
+                                // Send drift alert
+                                if (env.SLACK_WEBHOOK) {
+                                    slackSend(
+                                        color: '#FF9900',
+                                        message: "🚨 Infrastructure drift detected in ${params.ENV} environment. Manual review required."
+                                    )
+                                }
+                                
+                                // Store plan for review
+                                archiveArtifacts artifacts: 'drift-plan.out', allowEmptyArchive: false
+                                
+                                // Manual approval gate for auto-apply (disabled by default)
+                                if (params.DRIFT_CHECK_ONLY == false) {
+                                    echo "⏸️ Auto-apply disabled pending further testing"
+                                    echo "📋 Plan archived for manual review"
+                                    
+                                    // Uncomment below for future auto-apply capability
+                                    // input message: "Apply drift corrections?", ok: "Apply", submitterParameter: 'APPROVER'
+                                    // sh "terraform apply drift-plan.out"
+                                }
+                                
+                                currentBuild.result = 'UNSTABLE'
+                                break
+                                
+                            default:
+                                echo "❓ Unexpected exit code: ${exitCode}"
+                                currentBuild.result = 'FAILURE'
+                                error("Unexpected terraform plan exit code")
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Generate Report') {
+            steps {
+                script {
+                    echo "📊 Generating drift detection report"
+                    
+                    def timestamp = new Date().format('yyyy-MM-dd HH:mm:ss')
+                    def reportContent = """
+Terraform Drift Detection Report
+================================
+Environment: ${params.ENV}
+Timestamp: ${timestamp}
+Build: ${env.BUILD_NUMBER}
+Result: ${currentBuild.result ?: 'SUCCESS'}
+
+Plan Summary:
+${sh(script: 'terraform show -no-color drift-plan.out || echo "No plan file available"', returnStdout: true)}
+"""
+                    
+                    writeFile file: 'drift-report.txt', text: reportContent
+                    archiveArtifacts artifacts: 'drift-report.txt', allowEmptyArchive: false
+                    
+                    echo "✅ Report generated and archived"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                // Clean up sensitive environment variables
+                env.AWS_ACCESS_KEY_ID = ''
+                env.AWS_SECRET_ACCESS_KEY = ''
+                env.AWS_SESSION_TOKEN = ''
+                
+                echo "🧹 Cleaned up temporary credentials"
+            }
+        }
+        
+        success {
+            echo "✅ Drift detection completed successfully"
+        }
+        
+        failure {
+            echo "❌ Drift detection failed"
+            
+            if (env.SLACK_WEBHOOK) {
+                slackSend(
+                    color: '#FF0000',
+                    message: "❌ Drift detection failed for ${params.ENV} environment. Check logs: ${env.BUILD_URL}"
+                )
+            }
+        }
+        
+        unstable {
+            echo "⚠️ Drift detection completed with warnings (drift found)"
+        }
+    }
+}

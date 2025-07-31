@@ -1,0 +1,219 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EC2ScanningAccess",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeNetworkAcls",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeTags",
+        "ec2:DescribeImages",
+        "ec2:DescribeSnapshots"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:Region": "${aws:RequestedRegion}"
+        }
+      }
+    },
+    {
+      "Sid": "RDSScanningAccess",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBClusters",
+        "rds:DescribeDBSubnetGroups",
+        "rds:DescribeDBSecurityGroups"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ELBScanningAccess",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:DescribeTargetHealth",
+        "elasticloadbalancing:DescribeListeners"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3ReportStorage",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:PutObjectAcl",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::*-nessus-reports/*",
+        "arn:aws:s3:::*-nessus-reports"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "s3:x-amz-server-side-encryption": "AES256"
+        }
+      }
+    },
+    {
+      "Sid": "SecretsManagerNessusAccess",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:*:*:secret:nessus/*"
+      ]
+    },
+    {
+      "Sid": "CloudWatchNessusLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": [
+        "arn:aws:logs:*:*:log-group:/aws/ec2/nessus/*",
+        "arn:aws:logs:*:*:log-group:/nessus/*"
+      ]
+    },
+    {
+      "Sid": "CloudWatchMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "cloudwatch:namespace": [
+            "Nessus",
+            "AWS/EC2",
+            "CWAgent"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "SSMParameterNessusRead",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath"
+      ],
+      "Resource": [
+        "arn:aws:ssm:*:*:parameter/nessus/*",
+        "arn:aws:ssm:*:*:parameter/common/*"
+      ]
+    },
+    {
+      "Sid": "IAMReadOnlyForScanConfiguration",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicyVersions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ConfigComplianceReading",
+      "Effect": "Allow",
+      "Action": [
+        "config:GetComplianceDetailsByConfigRule",
+        "config:GetComplianceDetailsByResource",
+        "config:GetComplianceSummaryByConfigRule",
+        "config:GetComplianceSummaryByResourceType",
+        "config:DescribeConfigRules",
+        "config:DescribeComplianceByConfigRule",
+        "config:DescribeComplianceByResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "InspectorIntegration",
+      "Effect": "Allow",
+      "Action": [
+        "inspector:DescribeAssessmentRuns",
+        "inspector:DescribeAssessmentTargets",
+        "inspector:DescribeAssessmentTemplates",
+        "inspector:DescribeFindings",
+        "inspector:ListAssessmentRunAgents",
+        "inspector:ListAssessmentRuns",
+        "inspector:ListFindings"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "KMSAccess",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": [
+            "s3.*.amazonaws.com",
+            "secretsmanager.*.amazonaws.com",
+            "ssm.*.amazonaws.com"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "SNSAlertPublishing",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish"
+      ],
+      "Resource": [
+        "arn:aws:sns:*:*:nessus-*",
+        "arn:aws:sns:*:*:security-alerts"
+      ]
+    },
+    {
+      "Sid": "GuardDutyReadAccess",
+      "Effect": "Allow",
+      "Action": [
+        "guardduty:GetFindings",
+        "guardduty:ListFindings",
+        "guardduty:GetDetector",
+        "guardduty:ListDetectors"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecurityHubReadAccess",
+      "Effect": "Allow",
+      "Action": [
+        "securityhub:GetFindings",
+        "securityhub:BatchImportFindings"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

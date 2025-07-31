@@ -1,0 +1,37 @@
+# Sample Data File ${file_number}
+# Generated: ${timestamp}
+# 
+# This file contains simulated sensitive data for vulnerability testing purposes.
+# In a real environment, this type of data should be properly secured.
+
+[DATABASE_CONFIG]
+host=db-server-01.internal
+port=3306
+username=app_user
+password=my_secret_password_123
+database=customer_data
+
+[API_KEYS]
+payment_gateway_key=pk_test_51234567890abcdef
+analytics_key=UA-12345678-1
+third_party_api=sk_live_abcdef123456789
+
+[USER_CREDENTIALS]
+admin_user=administrator
+admin_pass=CompanyPassword2023!
+service_account=svc_backup
+service_pass=BackupPass456
+
+[PERSONAL_DATA]
+customer_ssn=123-45-6789
+credit_card=4532-1234-5678-9012
+phone_number=+1-555-123-4567
+email=customer@example.com
+
+[INTERNAL_URLS]
+admin_panel=https://admin.internal.company.com
+backup_server=https://backup.internal.company.com
+monitoring=https://monitoring.internal.company.com
+
+# WARNING: This is intentionally insecure data for testing purposes only!
+# Never store real credentials or sensitive data in plain text files.

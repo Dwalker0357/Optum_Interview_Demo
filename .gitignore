@@ -1,0 +1,106 @@
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# Terraform runtime files (NEVER commit these - causes GitHub push failures)
+**/modules.json
+**/terraform-provider-*
+**/.terraform/providers/
+**/.terraform/modules/
+
+# AWS
+.aws/
+*.pem
+*.p12
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Jenkins
+jenkins/workspace/
+jenkins/jobs/*/workspace/
+jenkins/jobs/*/builds/
+
+# Ansible
+ansible/vault_pass.txt
+ansible/inventory/hosts.yml
+!ansible/inventory/hosts.yml.example
+
+# Nessus
+nessus/activation_code.txt
+nessus/license.txt
+
+# Scripts
+scripts/
+
+# Documentation files created during development (exclude from git)
+docs/
+*.md
+!README.md
+
+# Generated configuration files (created by deployment scripts)
+backend-*.tf
+*-enhanced-security.tfvars
+*.tfplan
+production.tfvars
+
+# Development scripts and tools
+enhancements-deployment-test.sh
+test-deployments.sh
+test-dry-run.sh
+deploy-security-enhancements.sh
+
+# Module examples (redundant with main deployment)
+**/examples/
+
+# Backup files
+*.backup
+*.bak
+*.backup-*
+backup_*
+*.disabled
+
+# Cost/Security sensitive files
+*cost*
+*secret*
+*password*
+*key*
+!docs/COST_*.md
+
+# Demo test scripts with personal email
+Deployments/uat-demo-test.sh
